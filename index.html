@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🏀 HOOPS</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@300;400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+
+  body {
+    width: 100vw; height: 100vh; overflow: hidden;
+    font-family: 'Barlow Condensed', sans-serif;
+    cursor: none;
+  }
+
+  /* ===================== BACKGROUNDS ===================== */
+  #gif-backgrounds {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 0;
+  }
+  .gif-bg {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    object-fit: cover; opacity: 0;
+    transition: opacity 0.8s ease;
+    pointer-events: none;
+  }
+  .gif-bg.active { opacity: 1; }
+
+  /* ===================== GAME CANVAS ===================== */
+  #game-canvas {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 10;
+  }
+
+  /* ===================== UI OVERLAY ===================== */
+  #ui {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 20; pointer-events: none;
+  }
+
+  /* Header stats — transparent, background visible */
+  #stats-bar {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; align-items: flex-start;
+    padding: 14px 0 0;
+    background: none;
+    pointer-events: none;
+  }
+
+  .stat-block {
+    flex: 1; padding: 4px 12px;
+    text-align: center;
+  }
+  .stat-label {
+    font-size: 10px; letter-spacing: 3px; text-transform: uppercase;
+    color: rgba(255,255,255,0.9); display: block;
+    text-shadow: 0 1px 6px rgba(0,0,0,1), 0 0 10px rgba(0,0,0,1);
+  }
+  .stat-value {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 34px; color: #fff; line-height: 1;
+    text-shadow: 0 2px 10px rgba(0,0,0,1), 0 0 20px rgba(0,0,0,1);
+  }
+  .stat-value span { color: #ff6b00; text-shadow: 0 2px 8px rgba(0,0,0,1), 0 0 16px rgba(255,107,0,0.7); }
+
+  /* Streak display */
+  #streak-display {
+    position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
+    text-align: center; pointer-events: none;
+    transition: all 0.3s;
+  }
+  #streak-display.hidden { opacity: 0; transform: translateX(-50%) scale(0.8); }
+  #streak-fire {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 48px; color: #ff6b00;
+    text-shadow: 0 0 30px #ff6b00, 0 0 60px #ff9500;
+    animation: pulse 0.5s infinite alternate;
+  }
+  #streak-label {
+    font-size: 12px; letter-spacing: 4px; color: rgba(255,255,255,0.7);
+  }
+  @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.08); } }
+
+  /* Shot result */
+  #shot-result {
+    position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 80px; opacity: 0; pointer-events: none;
+    text-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    letter-spacing: 4px;
+  }
+  #shot-result.show-make {
+    color: #00e676;
+    animation: resultPop 1.2s forwards;
+  }
+  #shot-result.show-miss {
+    color: #ff1744;
+    animation: resultPop 1.2s forwards;
+  }
+  @keyframes resultPop {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+    15% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+    30% { transform: translate(-50%, -50%) scale(1); }
+    70% { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%, -60%); }
+  }
+
+  /* Music player — full width bottom bar */
+  #music-player {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    display: flex; align-items: center;
+    background: rgba(0,0,0,0.55); backdrop-filter: blur(10px);
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding: 8px 16px 10px;
+    pointer-events: all;
+    gap: 0;
+  }
+
+  /* Controls on the left */
+  #player-controls {
+    display: flex; align-items: center; gap: 6px;
+    flex-shrink: 0; margin-right: 14px;
+  }
+  #player-controls button {
+    background: none; border: none; color: #fff;
+    font-size: 16px; cursor: pointer; padding: 2px 4px;
+    opacity: 0.8; transition: opacity 0.2s, transform 0.1s;
+  }
+  #player-controls button:hover { opacity: 1; transform: scale(1.15); }
+
+  /* Song tiles — spread full width */
+  #song-list {
+    display: flex; flex: 1; align-items: stretch;
+    gap: 6px;
+  }
+  .song-tile {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 4px 8px; border-radius: 8px;
+    cursor: pointer; pointer-events: all;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.05);
+    transition: background 0.2s, border-color 0.2s;
+    min-width: 0;
+  }
+  .song-tile:hover { background: rgba(255,255,255,0.12); }
+  .song-tile.active {
+    background: rgba(255,107,0,0.2);
+    border-color: rgba(255,107,0,0.6);
+  }
+  .song-tile-name {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 13px; color: #fff; letter-spacing: 1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    width: 100%; text-align: center;
+  }
+  .song-tile-vibe {
+    font-size: 9px; color: rgba(255,255,255,0.45);
+    letter-spacing: 1.5px; text-transform: uppercase;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    width: 100%; text-align: center;
+  }
+
+  /* Soundbar visualizer */
+  #soundbar {
+    display: flex; align-items: flex-end; gap: 2px;
+    height: 24px; width: 36px; flex-shrink: 0; margin-left: 12px;
+  }
+  .bar {
+    flex: 1; background: #ff6b00; border-radius: 2px 2px 0 0;
+    height: 4px; transition: height 0.1s;
+    animation: none;
+  }
+  .bar.playing { animation: bounce-bar 0.6s infinite alternate ease-in-out; }
+  .bar:nth-child(1) { animation-delay: 0s; }
+  .bar:nth-child(2) { animation-delay: 0.1s; }
+  .bar:nth-child(3) { animation-delay: 0.05s; }
+  .bar:nth-child(4) { animation-delay: 0.15s; }
+  .bar:nth-child(5) { animation-delay: 0.08s; }
+  @keyframes bounce-bar {
+    0%   { height: 3px; opacity: 0.5; }
+    100% { height: 22px; opacity: 1; }
+  }
+
+  /* Swipe hint */
+  #hint {
+    position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+    font-size: 13px; letter-spacing: 3px; color: rgba(255,255,255,0.4);
+    text-transform: uppercase; text-align: center;
+    animation: fadeHint 3s forwards 2s;
+  }
+  @keyframes fadeHint {
+    0% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; }
+  }
+
+  /* Best streak toast */
+  #best-toast {
+    position: absolute; top: 80px; right: 20px;
+    background: linear-gradient(135deg, #ff6b00, #ff9500);
+    color: #fff; font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px; letter-spacing: 2px;
+    padding: 10px 20px; border-radius: 8px;
+    opacity: 0; transform: translateX(100%);
+    transition: all 0.4s;
+  }
+  #best-toast.show { opacity: 1; transform: translateX(0); }
+
+  /* Custom cursor */
+  #cursor {
+    position: fixed; width: 20px; height: 20px;
+    border: 2px solid rgba(255,107,0,0.8);
+    border-radius: 50%; pointer-events: none;
+    z-index: 9999; transform: translate(-50%, -50%);
+    transition: width 0.15s, height 0.15s, border-color 0.15s;
+    mix-blend-mode: screen;
+  }
+  #cursor.flinging {
+    width: 40px; height: 40px;
+    border-color: rgba(255,107,0,1);
+    background: rgba(255,107,0,0.1);
+  }
+</style>
+</head>
+<body>
+
+<!-- GIF Backgrounds -->
+<div id="gif-backgrounds">
+  <img class="gif-bg active" src="Pixaloop_02_08_2023_21_32_02_1240000.gif" alt="">
+  <img class="gif-bg" src="Pixaloop_04_08_2023_09_36_05_3730000.gif" alt="">
+  <img class="gif-bg" src="Pixaloop_05_08_2023_17_32_34_4840000.gif" alt="">
+  <img class="gif-bg" src="Pixaloop_06_08_2023_15_15_20_8450000.gif" alt="">
+  <img class="gif-bg" src="Pixaloop_08_08_2023_10_33_32_4480000.gif" alt="">
+</div>
+<!-- Game -->
+<canvas id="game-canvas"></canvas>
+
+<!-- UI -->
+<div id="ui">
+  <div id="stats-bar">
+    <div class="stat-block">
+      <span class="stat-label">Made</span>
+      <div class="stat-value" id="made-val">0</div>
+    </div>
+    <div class="stat-block">
+      <span class="stat-label">Attempts</span>
+      <div class="stat-value" id="att-val">0</div>
+    </div>
+    <div class="stat-block">
+      <span class="stat-label">Shot %</span>
+      <div class="stat-value" id="pct-val"><span>—</span></div>
+    </div>
+    <div class="stat-block">
+      <span class="stat-label">Best Streak</span>
+      <div class="stat-value" id="best-val">0</div>
+    </div>
+  </div>
+
+  <div id="streak-display" class="hidden">
+    <div id="streak-fire">🔥 <span id="streak-num">0</span></div>
+    <div id="streak-label">IN A ROW</div>
+  </div>
+
+  <div id="shot-result"></div>
+
+  <div id="best-toast">🏆 NEW BEST STREAK!</div>
+
+  <div id="hint">FLING THE BALL TOWARD THE HOOP</div>
+
+  <div id="music-player">
+    <div id="player-controls">
+      <button id="prev-btn">⏮</button>
+      <button id="play-btn">▶</button>
+      <button id="next-btn">⏭</button>
+    </div>
+    <div id="song-list"></div>
+    <div id="soundbar">
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+    </div>
+  </div>
+</div>
+
+<div id="cursor"></div>
+
+<script>
+// ========================================================
+// UTILITIES
+// ========================================================
+const $ = id => document.getElementById(id);
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+const dist = (x1, y1, x2, y2) => Math.sqrt((x2-x1)**2 + (y2-y1)**2);
+
+// ========================================================
+// CANVAS SETUP
+// ========================================================
+const gc = $('game-canvas'), gctx = gc.getContext('2d');
+
+function resize() {
+  gc.width = window.innerWidth;
+  gc.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', () => { resize(); initHoop(); });
+
+// ========================================================
+// GAME STATE
+// ========================================================
+let state = {
+  made: 0, attempts: 0, streak: 0, bestStreak: 0,
+  phase: 'idle',
+  makesInRow: 0
+};
+
+// ========================================================
+// HOOP
+// ========================================================
+let hoop = {};
+function initHoop() {
+  hoop.x = gc.width / 2;
+  hoop.y = gc.height * 0.28;
+  hoop.rimW = 70;
+  hoop.rimH = 12;
+  hoop.rimThick = 5;
+  hoop.netH = 55;
+  hoop.backboardW = 130;
+  hoop.backboardH = 90;
+  hoop.backboardX = hoop.x;
+  hoop.backboardY = hoop.y - 45;
+  hoop.leftRimX = hoop.x - hoop.rimW/2;
+  hoop.rightRimX = hoop.x + hoop.rimW/2;
+  hoop.rimY = hoop.y;
+}
+initHoop();
+
+// ========================================================
+// BALL
+// ========================================================
+let ball = {
+  x: 0, y: 0, r: 22,
+  vx: 0, vy: 0, spin: 0,
+  active: false,
+  trail: [],
+  phase: 'idle', // idle | flying | bouncing | done
+};
+
+// Position system:
+// makes 1-2: center (50%)
+// makes 3-4: 40%L / 60%R (1 each, alternating)
+// makes 5-6: 30%L / 70%R
+// makes 7-8: 20%L / 80%R
+// makes 9+:  10%L / 90%R (stays at extremes)
+// Miss resets to center.
+
+function getPositionXY() {
+  const W = gc.width, H = gc.height;
+  const m = state.makesInRow;
+
+  if (m <= 2) {
+    return { x: W * 0.50, y: H * 0.82 };
+  }
+
+  // Each pair of makes (one L, one R) advances the tier by 10%
+  const offsetMakes = m - 2;
+  const tier = Math.min(Math.floor((offsetMakes - 1) / 2), 3); // cap at tier 3 = 10%/90%
+  const xPct = 0.40 - tier * 0.10; // 0.40, 0.30, 0.20, 0.10
+  const isLeft = (offsetMakes % 2 === 1); // odd = left, even = right
+
+  return {
+    x: isLeft ? W * xPct : W * (1 - xPct),
+    y: H * 0.82
+  };
+}
+
+function resetBall() {
+  ball.trail = [];
+  ball.vx = 0; ball.vy = 0; ball.spin = 0;
+  ball.phase = 'idle';
+  ball.active = false;
+
+  const { x, y } = getPositionXY();
+  ball.x = x; ball.y = y;
+  startX = ball.x; startY = ball.y;
+}
+
+// ========================================================
+// SIDE SELECTION LOGIC
+// ========================================================
+function updateSide() {
+  // Position is computed live from makesInRow in getPositionXY()
+}
+
+// ========================================================
+// FLING INPUT
+// ========================================================
+let isDragging = false, startX, startY, curX, curY;
+let flingStart = null, flingPoints = [];
+
+gc.addEventListener('mousedown', e => {
+  if (ball.phase !== 'idle') return;
+  const dx = e.clientX - ball.x, dy = e.clientY - ball.y;
+  if (dist(0,0,dx,dy) < ball.r * 3) {
+    isDragging = true;
+    flingPoints = [{ x: e.clientX, y: e.clientY, t: Date.now() }];
+  }
+});
+
+gc.addEventListener('mousemove', e => {
+  curX = e.clientX; curY = e.clientY;
+  $('cursor').style.left = e.clientX + 'px';
+  $('cursor').style.top = e.clientY + 'px';
+  if (isDragging) {
+    flingPoints.push({ x: e.clientX, y: e.clientY, t: Date.now() });
+    if (flingPoints.length > 8) flingPoints.shift();
+    $('cursor').classList.add('flinging');
+  }
+});
+
+gc.addEventListener('mouseup', e => {
+  if (!isDragging) return;
+  isDragging = false;
+  $('cursor').classList.remove('flinging');
+  launchFromFling(e.clientX, e.clientY);
+});
+
+// Touch support
+gc.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  const dx = t.clientX - ball.x, dy = t.clientY - ball.y;
+  if (dist(0,0,dx,dy) < ball.r * 4) {
+    isDragging = true;
+    flingPoints = [{ x: t.clientX, y: t.clientY, t: Date.now() }];
+  }
+}, { passive: false });
+
+gc.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  curX = t.clientX; curY = t.clientY;
+  if (isDragging) {
+    flingPoints.push({ x: t.clientX, y: t.clientY, t: Date.now() });
+    if (flingPoints.length > 8) flingPoints.shift();
+  }
+}, { passive: false });
+
+gc.addEventListener('touchend', e => {
+  if (!isDragging) return;
+  isDragging = false;
+  const t = e.changedTouches[0];
+  launchFromFling(t.clientX, t.clientY);
+});
+
+function launchFromFling(ex, ey) {
+  if (flingPoints.length < 2) return;
+  
+  // Calculate velocity from recent fling history
+  const now = Date.now();
+  const recent = flingPoints.filter(p => now - p.t < 120);
+  if (recent.length < 2) return;
+
+  const p1 = recent[0], p2 = recent[recent.length - 1];
+  const dt = Math.max(p2.t - p1.t, 10);
+  let vx = (p2.x - p1.x) / dt * 16;
+  let vy = (p2.y - p1.y) / dt * 16;
+
+  // We want an upward fling toward hoop — encourage upward shots
+  // If vy is not going up (negative), scale it
+  if (vy > 0) vy = -Math.abs(vy) * 0.6; // flip if accidentally downward
+
+  const speed = dist(0,0,vx,vy);
+  const maxSpeed = 38;
+  const minSpeed = 10;
+  if (speed < minSpeed) {
+    // Aim toward hoop as fallback
+    const dx = hoop.x - ball.x, dy = hoop.y - ball.y;
+    const d = dist(0,0,dx,dy);
+    vx = dx/d * 18; vy = dy/d * 18 - 12;
+  }
+  if (speed > maxSpeed) {
+    vx = vx/speed*maxSpeed; vy = vy/speed*maxSpeed;
+  }
+
+  ball.vx = vx;
+  ball.vy = vy;
+  ball.spin = vx * 0.08;
+  ball.phase = 'flying';
+  ball.active = true;
+  state.attempts++;
+  updateStatsUI();
+}
+
+// ========================================================
+// PHYSICS & COLLISION
+// ========================================================
+const GRAVITY = 0.7;
+const AIR_DRAG = 0.995;
+const BOUNCE_ENERGY = 0.42;
+let scored = false, missDetected = false;
+let rimBounceCount = 0;
+
+function physicsTick() {
+  if (ball.phase === 'idle') return;
+
+  // Store trail
+  ball.trail.push({ x: ball.x, y: ball.y, r: ball.r });
+  if (ball.trail.length > 18) ball.trail.shift();
+
+  ball.vy += GRAVITY;
+  ball.vx *= AIR_DRAG;
+  ball.vy *= AIR_DRAG;
+  ball.x += ball.vx;
+  ball.y += ball.vy;
+
+  // ---- RIM COLLISION ----
+  const leftRim = { x: hoop.leftRimX, y: hoop.rimY };
+  const rightRim = { x: hoop.rightRimX, y: hoop.rimY };
+
+  function rimBounce(rx, ry) {
+    const dx = ball.x - rx, dy = ball.y - ry;
+    const d = dist(0,0,dx,dy);
+    if (d < ball.r + hoop.rimThick && rimBounceCount < 4) {
+      rimBounceCount++;
+      // Normal from rim center to ball
+      const nx = dx/d, ny = dy/d;
+      // Reflect velocity
+      const dot = ball.vx*nx + ball.vy*ny;
+      ball.vx = (ball.vx - 2*dot*nx) * BOUNCE_ENERGY;
+      ball.vy = (ball.vy - 2*dot*ny) * BOUNCE_ENERGY;
+      // Push out
+      ball.x = rx + nx*(ball.r + hoop.rimThick + 1);
+      ball.y = ry + ny*(ball.r + hoop.rimThick + 1);
+      ball.spin *= -0.5;
+      return true;
+    }
+    return false;
+  }
+
+  rimBounce(leftRim.x, leftRim.y);
+  rimBounce(rightRim.x, rightRim.y);
+
+  // ---- SCORE DETECTION ----
+  // Ball passes through hoop opening
+  if (!scored && !missDetected) {
+    const hoopLeft = hoop.leftRimX + hoop.rimThick;
+    const hoopRight = hoop.rightRimX - hoop.rimThick;
+    const hoopTop = hoop.rimY - 5;
+    const hoopBot = hoop.rimY + 20;
+    
+    if (ball.vy > 0 && ball.x > hoopLeft && ball.x < hoopRight &&
+        ball.y > hoopTop && ball.y < hoopBot && ball.y < hoopBot + 5) {
+      // Ball is going down through hoop
+      // Check ball fully fits
+      const margin = (hoopRight - hoopLeft) / 2;
+      const cx = (hoopLeft + hoopRight) / 2;
+      if (Math.abs(ball.x - cx) + ball.r < margin) {
+        scored = true;
+        registerScore(true);
+      }
+    }
+  }
+
+  // ---- OUT OF PLAY ----
+  const W = gc.width, H = gc.height;
+  if (ball.y > H + 100 || ball.x < -200 || ball.x > W + 200) {
+    if (!scored) { 
+      missDetected = true;
+      registerScore(false);
+    }
+    ball.phase = 'done';
+    setTimeout(() => {
+      scored = false; missDetected = false; rimBounceCount = 0;
+      ball.phase = 'idle'; ball.active = false; ball.trail = [];
+      resetBall();
+    }, 600);
+  }
+
+  if (scored && ball.y > H + 50) {
+    ball.phase = 'done';
+    setTimeout(() => {
+      scored = false; missDetected = false; rimBounceCount = 0;
+      ball.phase = 'idle'; ball.active = false; ball.trail = [];
+      resetBall();
+    }, 500);
+  }
+}
+
+// ========================================================
+// SCORING
+// ========================================================
+let nicePopup = null; // { x, y, alpha, text, vy }
+
+function registerScore(made) {
+  if (made) {
+    state.made++;
+    state.streak++;
+    state.makesInRow++;
+    if (state.streak > state.bestStreak) {
+      state.bestStreak = state.streak;
+      showBestToast();
+    }
+    showResult('SWISH! 🏀', true);
+    // "Nice" popup near net
+    const niceWords = ['Nice!', 'Swish!', 'Money!', 'Buckets!', 'And 1!', 'Cash!'];
+    nicePopup = {
+      x: hoop.x,
+      y: hoop.rimY + hoop.netH * 0.5,
+      alpha: 1,
+      vy: -1.2,
+      text: niceWords[Math.floor(Math.random() * niceWords.length)]
+    };
+  } else {
+    if (state.streak >= 3) showResult(`STREAK BROKEN`, false);
+    else showResult('MISS', false);
+    state.streak = 0;
+    state.makesInRow = 0;
+    // getPositionXY() will return center when makesInRow=0
+  }
+  updateSide();
+  updateStatsUI();
+  updateStreakUI();
+}
+
+function updateStatsUI() {
+  $('made-val').textContent = state.made;
+  $('att-val').textContent = state.attempts;
+  const pct = state.attempts > 0 ? Math.round(state.made/state.attempts*100) : null;
+  $('pct-val').innerHTML = pct !== null ? `<span>${pct}</span>%` : '<span>—</span>';
+  $('best-val').textContent = state.bestStreak;
+}
+
+function updateStreakUI() {
+  const sd = $('streak-display');
+  if (state.streak >= 2) {
+    sd.classList.remove('hidden');
+    $('streak-num').textContent = state.streak;
+  } else {
+    sd.classList.add('hidden');
+  }
+}
+
+function showResult(msg, made) {
+  const el = $('shot-result');
+  el.textContent = msg;
+  el.className = made ? 'show-make' : 'show-miss';
+  void el.offsetWidth;
+  el.className = made ? 'show-make' : 'show-miss';
+}
+
+function showBestToast() {
+  const t = $('best-toast');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ========================================================
+// DRAWING
+// ========================================================
+let ballAngle = 0;
+
+function drawFrame() {
+  gctx.clearRect(0, 0, gc.width, gc.height);
+
+  // Court floor line
+  const floorY = gc.height * 0.88;
+  gctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  gctx.lineWidth = 2;
+  gctx.setLineDash([20, 15]);
+  gctx.beginPath();
+  gctx.moveTo(gc.width*0.1, floorY);
+  gctx.lineTo(gc.width*0.9, floorY);
+  gctx.stroke();
+  gctx.setLineDash([]);
+
+  // 3-pt arc (decorative)
+  gctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  gctx.lineWidth = 2;
+  gctx.beginPath();
+  gctx.arc(gc.width/2, floorY, gc.height * 0.35, Math.PI, 2*Math.PI);
+  gctx.stroke();
+
+  drawHoop();
+  drawTrail();
+  drawBall();
+
+  // Draw ball launch hint
+  if (ball.phase === 'idle' && isDragging) {
+    drawAimLine();
+  }
+
+  // Draw "nice" popup
+  if (nicePopup) {
+    nicePopup.y += nicePopup.vy;
+    nicePopup.alpha -= 0.022;
+    if (nicePopup.alpha <= 0) {
+      nicePopup = null;
+    } else {
+      gctx.save();
+      gctx.globalAlpha = nicePopup.alpha;
+      gctx.font = 'bold 22px "Bebas Neue", sans-serif';
+      gctx.textAlign = 'center';
+      gctx.fillStyle = '#00e676';
+      gctx.shadowColor = '#00e676';
+      gctx.shadowBlur = 10;
+      gctx.fillText(nicePopup.text, nicePopup.x, nicePopup.y);
+      gctx.restore();
+    }
+  }
+
+}
+
+function drawHoop() {
+  const ctx = gctx;
+
+  // Backboard — larger, with a genuine smooth semicircle top
+  const bx = hoop.backboardX, by = hoop.backboardY;
+  const bw = hoop.backboardW, bh = hoop.backboardH;
+  // The backboard: rectangular bottom half + semicircle top
+  const halfW = bw / 2;
+  const rectTop = by;           // flat rect from here down
+  const rectBot = by + bh * 0.5;
+  const archCy = by;            // center of semicircle arc
+  const archR = halfW;          // radius = half the width → perfect semicircle
+
+  ctx.fillStyle = 'rgba(240,240,255,0.92)';
+  ctx.strokeStyle = '#e63946';
+  ctx.lineWidth = 3.5;
+  ctx.beginPath();
+  ctx.moveTo(bx - halfW, rectBot);          // bottom-left
+  ctx.lineTo(bx - halfW, archCy);           // left side up to arc start
+  ctx.arc(bx, archCy, halfW, Math.PI, 0);  // semicircle from left to right (top)
+  ctx.lineTo(bx + halfW, rectBot);          // right side down
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Inner target box (lower half of board)
+  ctx.strokeStyle = '#e63946';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.rect(bx - 30, by + 4, 60, 34);
+  ctx.stroke();
+
+  // Pole / support from backboard to rim
+  ctx.strokeStyle = 'rgba(200,200,200,0.6)';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(hoop.x, hoop.backboardY + hoop.backboardH/2);
+  ctx.lineTo(hoop.x, hoop.rimY - 2);
+  ctx.stroke();
+
+  // Net
+  drawNet();
+
+  // Left rim
+  ctx.fillStyle = '#e63946';
+  ctx.beginPath();
+  ctx.arc(hoop.leftRimX, hoop.rimY, hoop.rimThick, 0, Math.PI*2);
+  ctx.fill();
+
+  // Right rim
+  ctx.beginPath();
+  ctx.arc(hoop.rightRimX, hoop.rimY, hoop.rimThick, 0, Math.PI*2);
+  ctx.fill();
+
+  // Rim bar
+  ctx.strokeStyle = '#e63946';
+  ctx.lineWidth = 6;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(hoop.leftRimX, hoop.rimY);
+  ctx.lineTo(hoop.rightRimX, hoop.rimY);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+}
+
+function drawNet() {
+  const ctx = gctx;
+  const lx = hoop.leftRimX, rx = hoop.rightRimX, ty = hoop.rimY;
+  const bw = (rx - lx) * 0.7;
+  const bx = (lx + rx) / 2;
+  const by = ty + hoop.netH;
+  const segs = 6;
+  
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = 1.5;
+
+  // Vertical strings
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs;
+    const topX = lerp(lx, rx, t);
+    const botX = lerp(bx - bw/2, bx + bw/2, t);
+    ctx.beginPath();
+    ctx.moveTo(topX, ty);
+    ctx.lineTo(botX, by);
+    ctx.stroke();
+  }
+  // Horizontal bands
+  for (let r = 1; r <= 4; r++) {
+    const t = r / 4;
+    ctx.beginPath();
+    for (let i = 0; i <= segs; i++) {
+      const st = i / segs;
+      const x = lerp(lerp(lx, rx, st), lerp(bx - bw/2, bx + bw/2, st), t);
+      const y = lerp(ty, by, t);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+}
+
+function drawTrail() {
+  if (ball.trail.length < 2) return;
+  for (let i = 1; i < ball.trail.length; i++) {
+    const t = i / ball.trail.length;
+    const p = ball.trail[i];
+    gctx.beginPath();
+    gctx.arc(p.x, p.y, p.r * t * 0.5, 0, Math.PI*2);
+    gctx.fillStyle = `rgba(255,107,0,${t * 0.3})`;
+    gctx.fill();
+  }
+}
+
+function drawBall() {
+  if (!ball.active && ball.phase !== 'idle') return;
+  const ctx = gctx;
+  const x = ball.x, y = ball.y, r = ball.r;
+
+  ballAngle += ball.vx * 0.04;
+
+  // Shadow
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + r + 4, r * 0.8, r * 0.25, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+
+  // Ball body
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(ballAngle);
+
+  const grad = ctx.createRadialGradient(-r*0.3, -r*0.3, r*0.05, 0, 0, r);
+  grad.addColorStop(0, '#ff9f43');
+  grad.addColorStop(0.6, '#e67e22');
+  grad.addColorStop(1, '#a04000');
+
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI*2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Seam lines
+  ctx.strokeStyle = 'rgba(100,30,0,0.6)';
+  ctx.lineWidth = 1.5;
+  // Vertical seam
+  ctx.beginPath();
+  ctx.arc(0, 0, r, -Math.PI*0.15, Math.PI*0.15);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, r, Math.PI - Math.PI*0.15, Math.PI + Math.PI*0.15);
+  ctx.stroke();
+  // Horizontal seam
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r, r*0.25, 0, 0, Math.PI*2);
+  ctx.stroke();
+
+  // Highlight
+  ctx.beginPath();
+  ctx.arc(-r*0.28, -r*0.3, r*0.2, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawAimLine() {
+  // Dotted line showing trajectory hint
+  const ctx = gctx;
+  const recent = flingPoints;
+  if (recent.length < 2) return;
+  const p1 = recent[0], p2 = recent[recent.length-1];
+  const dt = Math.max(p2.t - p1.t, 10);
+  let vx = (p2.x - p1.x) / dt * 16;
+  let vy = (p2.y - p1.y) / dt * 16;
+  if (vy > 0) vy = -Math.abs(vy) * 0.6;
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 8]);
+  ctx.beginPath();
+  let px = ball.x, py = ball.y, pvx = vx, pvy = vy;
+  ctx.moveTo(px, py);
+  for (let i = 0; i < 20; i++) {
+    pvy += GRAVITY * 0.5;
+    pvx *= AIR_DRAG;
+    pvy *= AIR_DRAG;
+    px += pvx; py += pvy;
+    ctx.lineTo(px, py);
+    if (py > gc.height) break;
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// ========================================================
+// BACKGROUND GIF SWITCHER
+// ========================================================
+let currentScene = 0;
+let bgTime = 0; // kept for any remaining refs
+
+function switchBackground(idx) {
+  document.querySelectorAll('.gif-bg').forEach((el, i) => {
+    el.classList.toggle('active', i === idx);
+  });
+  currentScene = idx;
+}
+
+// Background handled by GIF images
+function drawBackground() { /* GIF backgrounds — no canvas drawing needed */ }
+
+
+// ========================================================
+// MUSIC — Real MP3 Audio
+// ========================================================
+const TRACKS = [
+  { name: 'TITANIYUM',      vibe: 'HARD HITTER',    scene: 0, file: 'TITANIYUM.mp3' },
+  { name: 'HOW IM LIVIN',   vibe: 'STREET ANTHEM',  scene: 1, file: 'HOW_IM_LIVIN.mp3' },
+  { name: 'RUNNIN AROUND',  vibe: 'RUNNIN AROUND',  scene: 2, file: 'RUNNIN_AROUND.mp3' },
+  { name: 'SUNSET HOOPS',   vibe: 'SMOOTH VIBE',    scene: 3, file: 'SUNSET_HOOPS.mp3' },
+  { name: 'REAL ONE',       vibe: 'CERTIFIED',      scene: 4, file: 'REAL_ONE.mp3' },
+];
+
+let currentTrack = 0, isPlaying = false;
+let audioEl = null;
+
+function getOrCreateAudio(src) {
+  if (!audioEl) {
+    audioEl = new Audio();
+    audioEl.volume = 0.85;
+    audioEl.addEventListener('ended', () => {
+      playTrack((currentTrack + 1) % TRACKS.length);
+    });
+  }
+  audioEl.src = src;
+  return audioEl;
+}
+
+function stopTrack() {
+  if (audioEl) { audioEl.pause(); audioEl.currentTime = 0; }
+  setSoundbarsPlaying(false);
+}
+
+function playTrack(idx) {
+  stopTrack();
+  currentTrack = idx;
+  const t = TRACKS[idx];
+
+  // Switch background GIF
+  switchBackground(t.scene);
+
+  // Update song tile UI
+  document.querySelectorAll('.song-tile').forEach((tile, i) => {
+    tile.classList.toggle('active', i === idx);
+  });
+  setSoundbarsPlaying(true);
+  isPlaying = true;
+  $('play-btn').textContent = '⏸';
+
+  const audio = getOrCreateAudio(t.file);
+  audio.play().catch(e => console.log('Autoplay blocked:', e));
+}
+
+function togglePlay() {
+  if (isPlaying) {
+    if (audioEl) audioEl.pause();
+    isPlaying = false;
+    $('play-btn').textContent = '▶';
+    setSoundbarsPlaying(false);
+  } else {
+    if (audioEl) {
+      audioEl.play();
+    } else {
+      playTrack(currentTrack);
+    }
+    isPlaying = true;
+    $('play-btn').textContent = '⏸';
+    setSoundbarsPlaying(true);
+  }
+}
+
+function setSoundbarsPlaying(on) {
+  document.querySelectorAll('#soundbar .bar').forEach(b => {
+    if (on) b.classList.add('playing');
+    else b.classList.remove('playing');
+  });
+}
+
+// Build song tiles
+const songList = $('song-list');
+TRACKS.forEach((t, i) => {
+  const tile = document.createElement('div');
+  tile.className = 'song-tile' + (i === 0 ? ' active' : '');
+  tile.innerHTML = `<div class="song-tile-name">${t.name}</div><div class="song-tile-vibe">${t.vibe}</div>`;
+  tile.addEventListener('click', () => playTrack(i));
+  songList.appendChild(tile);
+});
+
+$('play-btn').addEventListener('click', togglePlay);
+$('prev-btn').addEventListener('click', () => playTrack((currentTrack - 1 + TRACKS.length) % TRACKS.length));
+$('next-btn').addEventListener('click', () => playTrack((currentTrack + 1) % TRACKS.length));
+
+// ========================================================
+// MAIN LOOP
+// ========================================================
+let lastTime = 0;
+resetBall();
+updateStatsUI();
+
+function loop(ts) {
+  const dt = ts - lastTime;
+  lastTime = ts;
+  bgTime += 0.02;
+
+  drawBackground();
+  physicsTick();
+  drawFrame();
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// Start music on first interaction
+let musicStarted = false;
+document.addEventListener('click', () => {
+  if (!musicStarted) {
+    musicStarted = true;
+    playTrack(0);
+  }
+}, { once: true });
+// Also auto-switch background on load
+switchBackground(0);
+
+// Dismiss hint after first throw
+gc.addEventListener('mouseup', () => {
+  $('hint').style.display = 'none';
+}, { once: true });
+gc.addEventListener('touchend', () => {
+  $('hint').style.display = 'none';
+}, { once: true });
+</script>
+</body>
+</html>
