@@ -18,7 +18,19 @@
   }
 
   /* ===================== BACKGROUNDS ===================== */
-  /* No separate background layer — GIF drawn directly onto game canvas */
+  /* gif-backgrounds: used on iPhone/desktop (real animated GIFs as CSS layer) */
+  /* Android uses drawImage() directly onto canvas instead — no CSS bg layer */
+  #gif-backgrounds {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 0; background: #000;
+  }
+  .gif-bg {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    object-fit: cover; opacity: 0;
+    transition: opacity 0.6s ease;
+    pointer-events: none;
+  }
+  .gif-bg.active { opacity: 1; }
 
   /* ===================== GAME CANVAS ===================== */
   #game-canvas {
@@ -27,6 +39,8 @@
     touch-action: none;
     -webkit-tap-highlight-color: transparent;
     display: block;
+    /* Android: canvas is opaque (draws GIF internally, set in JS)  */
+    /* iPhone/Desktop: canvas is transparent (GIFs show through from below) */
   }
 
   /* ===================== UI OVERLAY ===================== */
@@ -224,9 +238,17 @@
 </head>
 <body>
 
-<!-- Single canvas — GIF drawn directly into it, no compositing -->
+<!-- GIF backgrounds for iPhone/desktop (CSS layer) -->
+<div id="gif-backgrounds">
+  <img class="gif-bg active" src="titaniyumgif.gif" alt="">
+  <img class="gif-bg" src="howimlivingif.gif" alt="">
+  <img class="gif-bg" src="runninaroundgif.gif" alt="">
+  <img class="gif-bg" src="sunsethoopsgif.gif" alt="">
+  <img class="gif-bg" src="realonegif.gif" alt="">
+</div>
+<!-- Game canvas -->
 <canvas id="game-canvas"></canvas>
-<!-- Hidden GIF images used as drawImage() sources -->
+<!-- Hidden img sources for Android drawImage fallback -->
 <div id="gif-sources" style="display:none">
   <img id="gif0" src="titaniyumgif.gif" alt="">
   <img id="gif1" src="howimlivingif.gif" alt="">
@@ -298,10 +320,22 @@ const dist = (x1, y1, x2, y2) => Math.sqrt((x2-x1)**2 + (y2-y1)**2);
 // ========================================================
 // CANVAS SETUP
 // ========================================================
-const gc = $('game-canvas'), gctx = gc.getContext('2d', { alpha: false });
-// GIF image sources — drawn directly onto canvas each frame
+// Detect Android — needs single-canvas GIF rendering to avoid compositing glitches
+const isAndroid = /android/i.test(navigator.userAgent);
+
+// Canvas: opaque on Android (draws GIFs internally), transparent on iPhone/desktop
+const gc = $('game-canvas');
+const gctx = gc.getContext('2d', { alpha: !isAndroid });
+
+// GIF image sources for Android drawImage() path
 const gifImgs = [0,1,2,3,4].map(i => $('gif' + i));
 let currentGifIdx = 0;
+
+// On Android: hide the CSS gif-backgrounds div (canvas handles it instead)
+if (isAndroid) {
+  const bgDiv = $('gif-backgrounds');
+  if (bgDiv) bgDiv.style.display = 'none';
+}
 
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
@@ -405,21 +439,24 @@ function updateSide() {
 }
 
 // ========================================================
-// INPUT — dual mode
-// MOBILE (touch): hold & drag anywhere to aim, release to shoot
-// DESKTOP (mouse): swipe/fling forward toward the hoop
+// INPUT
+// Mobile/touch (iPhone + Android): hold & drag to aim, release to shoot
+// Desktop (mouse): forward swipe/fling toward the hoop
 // ========================================================
 const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-// Set hint
+
 document.addEventListener('DOMContentLoaded', () => {
   const hint = $('hint');
-  if (hint) hint.textContent = 'HOLD & DRAG TO AIM — RELEASE TO SHOOT';
+  if (hint) hint.textContent = isTouchDevice
+    ? 'HOLD & DRAG TO AIM — RELEASE TO SHOOT'
+    : 'SWIPE THE BALL TOWARD THE HOOP';
 });
 
+// ---- SHARED STATE ----
 let isAiming = false, aimStartX = 0, aimStartY = 0, aimCurX = 0, aimCurY = 0;
 let startX = 0, startY = 0;
 
-// --- MOBILE constants (hold & aim) ---
+// ---- MOBILE: hold & aim constants ----
 const MAX_DRAG = 140;
 const MAX_SPEED = 28;
 const MIN_SPEED = 10;
@@ -435,13 +472,43 @@ function getAimVector() {
   return { vx: (dx/mag) * speed, vy: (dy/mag) * speed, power };
 }
 
+function shootBall() {
+  const { vx, vy, power } = getAimVector();
+  if (power < 0.05) return;
+  ball.vx = vx; ball.vy = vy; ball.spin = 0;
+  ball.phase = 'flying'; ball.active = true;
+  state.attempts++; updateStatsUI();
+}
 
-// --- MOUSE events (desktop — same hold & aim as mobile) ---
+// ---- DESKTOP: forward fling constants ----
+let flingPoints = [];
+
+function launchFromFling() {
+  const now = Date.now();
+  const recent = flingPoints.filter(p => now - p.t < 150);
+  if (recent.length < 2) return false;
+  const p1 = recent[0], p2 = recent[recent.length - 1];
+  const dt = Math.max(p2.t - p1.t, 8);
+  let vx = (p2.x - p1.x) / dt * 16;
+  let vy = (p2.y - p1.y) / dt * 16;
+  if (vy > -2) vy = -14;
+  const speed = dist(0,0,vx,vy);
+  if (speed < 5) return false;
+  const maxSpd = 36;
+  if (speed > maxSpd) { vx = vx/speed*maxSpd; vy = vy/speed*maxSpd; }
+  ball.vx = vx; ball.vy = vy; ball.spin = 0;
+  ball.phase = 'flying'; ball.active = true;
+  state.attempts++; updateStatsUI();
+  return true;
+}
+
+// ---- MOUSE events (desktop forward fling) ----
 gc.addEventListener('mousedown', e => {
   if (ball.phase !== 'idle') return;
   isAiming = true;
   aimStartX = aimCurX = e.clientX;
   aimStartY = aimCurY = e.clientY;
+  flingPoints = [{ x: e.clientX, y: e.clientY, t: Date.now() }];
   $("cursor").classList.add("flinging");
 });
 
@@ -450,16 +517,27 @@ gc.addEventListener('mousemove', e => {
   $("cursor").style.top  = e.clientY + "px";
   if (!isAiming) return;
   aimCurX = e.clientX; aimCurY = e.clientY;
+  flingPoints.push({ x: e.clientX, y: e.clientY, t: Date.now() });
+  if (flingPoints.length > 12) flingPoints.shift();
 });
 
 gc.addEventListener('mouseup', e => {
   if (!isAiming) return;
   isAiming = false;
   $("cursor").classList.remove("flinging");
-  shootBall();
+  // Try fling first; fall back to aim-vector if user just clicked without moving
+  if (!launchFromFling()) {
+    const av = getAimVector();
+    if (av.power > 0.08) {
+      ball.vx = av.vx; ball.vy = av.vy; ball.spin = 0;
+      ball.phase = 'flying'; ball.active = true;
+      state.attempts++; updateStatsUI();
+    }
+  }
+  flingPoints = [];
 });
 
-// --- TOUCH events (mobile hold & aim) ---
+// ---- TOUCH events (mobile hold & aim — iPhone + Android) ----
 gc.addEventListener('touchstart', e => {
   e.preventDefault();
   if (ball.phase !== 'idle') return;
@@ -481,14 +559,6 @@ gc.addEventListener('touchend', e => {
   isAiming = false;
   shootBall();
 });
-
-function shootBall() {
-  const { vx, vy, power } = getAimVector();
-  if (power < 0.05) return;
-  ball.vx = vx; ball.vy = vy; ball.spin = 0;
-  ball.phase = 'flying'; ball.active = true;
-  state.attempts++; updateStatsUI();
-}
 
 // ========================================================
 // PHYSICS & COLLISION
@@ -664,18 +734,22 @@ function drawFrame() {
   gctx.globalCompositeOperation = 'source-over';
   gctx.globalAlpha = 1;
 
-  // Draw GIF background directly — single canvas, no compositing fights
-  const gifImg = gifImgs[currentGifIdx];
-  if (gifImg && gifImg.complete && gifImg.naturalWidth > 0) {
-    // Cover-fit: scale to fill canvas maintaining aspect ratio
-    const iw = gifImg.naturalWidth, ih = gifImg.naturalHeight;
-    const scale = Math.max(W / iw, H / ih);
-    const dw = iw * scale, dh = ih * scale;
-    const ox = (W - dw) / 2, oy = (H - dh) / 2;
-    gctx.drawImage(gifImg, ox, oy, dw, dh);
+  // Background rendering — Android: drawImage GIF onto opaque canvas
+  //                         iPhone/Desktop: clear to transparent (CSS GIFs show through)
+  if (isAndroid) {
+    const gifImg = gifImgs[currentGifIdx];
+    if (gifImg && gifImg.complete && gifImg.naturalWidth > 0) {
+      const iw = gifImg.naturalWidth, ih = gifImg.naturalHeight;
+      const scale = Math.max(W / iw, H / ih);
+      const dw = iw * scale, dh = ih * scale;
+      const ox = (W - dw) / 2, oy = (H - dh) / 2;
+      gctx.drawImage(gifImg, ox, oy, dw, dh);
+    } else {
+      gctx.fillStyle = '#111';
+      gctx.fillRect(0, 0, W, H);
+    }
   } else {
-    gctx.fillStyle = '#111';
-    gctx.fillRect(0, 0, W, H);
+    gctx.clearRect(0, 0, W, H);
   }
 
   // Court floor line
@@ -700,9 +774,13 @@ function drawFrame() {
   drawTrail();
   drawBall();
 
-  // Draw aim arrow when holding (same for all platforms)
+  // Draw aim visual while holding
   if (ball.phase === 'idle' && isAiming) {
-    drawAimArrow();
+    if (isTouchDevice) {
+      drawAimArrow();       // touch: full arrow + dots + power ring
+    } else {
+      drawFlingPreview();   // desktop: dotted trajectory preview
+    }
   }
 
   // Draw "nice" popup
@@ -957,6 +1035,35 @@ function drawAimArrow() {
   ctx.restore();
 }
 
+function drawFlingPreview() {
+  // Desktop: show dotted trajectory hint based on fling direction so far
+  const ctx = gctx;
+  if (flingPoints.length < 2) return;
+  const p1 = flingPoints[0], p2 = flingPoints[flingPoints.length - 1];
+  const dt = Math.max(p2.t - p1.t, 8);
+  let vx = (p2.x - p1.x) / dt * 16;
+  let vy = (p2.y - p1.y) / dt * 16;
+  if (vy > -2) vy = -14;
+  const speed = dist(0,0,vx,vy);
+  if (speed < 3) return;
+  const cap = 36;
+  if (speed > cap) { vx = vx/speed*cap; vy = vy/speed*cap; }
+
+  ctx.save();
+  let px = ball.x, py = ball.y, pvx = vx, pvy = vy;
+  for (let i = 1; i <= 18; i++) {
+    pvy += GRAVITY; pvx *= AIR_DRAG; pvy *= AIR_DRAG;
+    px += pvx; py += pvy;
+    if (py > gc.height) break;
+    const t = i / 18;
+    ctx.beginPath();
+    ctx.arc(px, py, 3, 0, Math.PI*2);
+    ctx.fillStyle = `rgba(255,255,255,${(1-t)*0.5})`;
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 // ========================================================
 // BACKGROUND GIF SWITCHER
 // ========================================================
@@ -964,6 +1071,12 @@ let currentScene = 0;
 function switchBackground(idx) {
   currentScene = idx;
   currentGifIdx = idx;
+  if (!isAndroid) {
+    // iPhone/desktop: toggle active class on CSS GIF images
+    document.querySelectorAll('.gif-bg').forEach((el, i) => {
+      el.classList.toggle('active', i === idx);
+    });
+  }
 }
 
 
