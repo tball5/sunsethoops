@@ -232,9 +232,10 @@
     mix-blend-mode: screen;
   }
   #cursor.flinging {
-    width: 40px; height: 40px;
-    border-color: rgba(255,107,0,1);
-    background: rgba(255,107,0,0.1);
+    width: 48px; height: 48px;
+    border-color: rgba(255,200,80,1);
+    background: rgba(255,200,80,0.08);
+    border-width: 2px;
   }
 </style>
 </head>
@@ -281,7 +282,7 @@
 
   <div id="best-toast">🏆 NEW BEST STREAK!</div>
 
-  <div id="hint">FLING THE BALL TOWARD THE HOOP</div>
+  <div id="hint">HOLD &amp; DRAG TO AIM — RELEASE TO SHOOT</div>
 
   <div id="music-player">
     <div id="player-controls">
@@ -418,100 +419,79 @@ function updateSide() {
 }
 
 // ========================================================
-// FLING INPUT
+// AIM & RELEASE INPUT
+// Hold anywhere to aim — drag to set direction & power — release to shoot
 // ========================================================
-let isDragging = false, startX, startY, curX, curY;
-let flingStart = null, flingPoints = [];
+let isAiming = false, aimStartX = 0, aimStartY = 0, aimCurX = 0, aimCurY = 0;
+let startX = 0, startY = 0; // ball start position ref
+
+const MAX_DRAG = 140;  // px drag = full power
+const MAX_SPEED = 28;
+const MIN_SPEED = 10;
+
+function getAimVector() {
+  // Drag direction: from where finger started TO where finger is now
+  // Shot goes OPPOSITE (pull back like a slingshot feeling, but arrow points forward)
+  let dx = aimStartX - aimCurX;  // opposite of drag = shoot direction
+  let dy = aimStartY - aimCurY;
+
+  // Force upward — if aim isn't going up, push it up
+  if (dy > -5) dy = -Math.abs(dx) * 0.5 - 10;
+
+  const dragDist = Math.min(dist(0,0,dx,dy), MAX_DRAG);
+  const power = dragDist / MAX_DRAG; // 0..1
+  const speed = MIN_SPEED + power * (MAX_SPEED - MIN_SPEED);
+
+  const mag = Math.max(dist(0,0,dx,dy), 0.01);
+  return { vx: (dx/mag) * speed, vy: (dy/mag) * speed, power };
+}
 
 gc.addEventListener('mousedown', e => {
   if (ball.phase !== 'idle') return;
-  const dx = e.clientX - ball.x, dy = e.clientY - ball.y;
-  if (dist(0,0,dx,dy) < ball.r * 3) {
-    isDragging = true;
-    flingPoints = [{ x: e.clientX, y: e.clientY, t: Date.now() }];
-  }
+  isAiming = true;
+  aimStartX = aimCurX = e.clientX;
+  aimStartY = aimCurY = e.clientY;
+  $("cursor").classList.add("flinging");
 });
-
 gc.addEventListener('mousemove', e => {
-  curX = e.clientX; curY = e.clientY;
-  $('cursor').style.left = e.clientX + 'px';
-  $('cursor').style.top = e.clientY + 'px';
-  if (isDragging) {
-    flingPoints.push({ x: e.clientX, y: e.clientY, t: Date.now() });
-    if (flingPoints.length > 8) flingPoints.shift();
-    $('cursor').classList.add('flinging');
-  }
+  $("cursor").style.left = e.clientX + "px";
+  $("cursor").style.top  = e.clientY + "px";
+  if (isAiming) { aimCurX = e.clientX; aimCurY = e.clientY; }
 });
-
 gc.addEventListener('mouseup', e => {
-  if (!isDragging) return;
-  isDragging = false;
-  $('cursor').classList.remove('flinging');
-  launchFromFling(e.clientX, e.clientY);
+  if (!isAiming) return;
+  isAiming = false;
+  $("cursor").classList.remove("flinging");
+  shootBall();
 });
 
-// Touch support
 gc.addEventListener('touchstart', e => {
   e.preventDefault();
+  if (ball.phase !== 'idle') return;
   const t = e.touches[0];
-  const dx = t.clientX - ball.x, dy = t.clientY - ball.y;
-  if (dist(0,0,dx,dy) < ball.r * 4) {
-    isDragging = true;
-    flingPoints = [{ x: t.clientX, y: t.clientY, t: Date.now() }];
-  }
+  isAiming = true;
+  aimStartX = aimCurX = t.clientX;
+  aimStartY = aimCurY = t.clientY;
 }, { passive: false });
-
 gc.addEventListener('touchmove', e => {
   e.preventDefault();
+  if (!isAiming) return;
   const t = e.touches[0];
-  curX = t.clientX; curY = t.clientY;
-  if (isDragging) {
-    flingPoints.push({ x: t.clientX, y: t.clientY, t: Date.now() });
-    if (flingPoints.length > 8) flingPoints.shift();
-  }
+  aimCurX = t.clientX; aimCurY = t.clientY;
 }, { passive: false });
-
 gc.addEventListener('touchend', e => {
-  if (!isDragging) return;
-  isDragging = false;
-  const t = e.changedTouches[0];
-  launchFromFling(t.clientX, t.clientY);
+  if (!isAiming) return;
+  isAiming = false;
+  shootBall();
 });
 
-function launchFromFling(ex, ey) {
-  if (flingPoints.length < 2) return;
-
-  // Use recent fling points for velocity
-  const now = Date.now();
-  const recent = flingPoints.filter(p => now - p.t < 150);
-  if (recent.length < 2) return;
-
-  const p1 = recent[0], p2 = recent[recent.length - 1];
-  const dt = Math.max(p2.t - p1.t, 8);
-  let vx = (p2.x - p1.x) / dt * 16;
-  let vy = (p2.y - p1.y) / dt * 16;
-
-  // If the fling wasn't clearly upward, make it go up
-  // but PRESERVE the horizontal direction exactly as swiped
-  if (vy > -2) vy = -14; // force upward if barely moving up
-
-  // Clamp speed — no fallback redirect to hoop center (that caused side curving)
-  const speed = dist(0, 0, vx, vy);
-  const maxSpeed = 36;
-  const minSpeed = 8;
-  if (speed < minSpeed) {
-    // Scale up while keeping the exact same angle
-    const scale = minSpeed / Math.max(speed, 0.1);
-    vx *= scale; vy *= scale;
-  }
-  if (speed > maxSpeed) {
-    vx = vx / speed * maxSpeed;
-    vy = vy / speed * maxSpeed;
-  }
-
+function shootBall() {
+  const { vx, vy, power } = getAimVector();
+  // Need at least a small drag to shoot
+  if (power < 0.05) return;
   ball.vx = vx;
   ball.vy = vy;
-  ball.spin = 0; // no spin-induced curve
+  ball.spin = 0;
   ball.phase = 'flying';
   ball.active = true;
   state.attempts++;
@@ -715,9 +695,9 @@ function drawFrame() {
   drawTrail();
   drawBall();
 
-  // Draw ball launch hint
-  if (ball.phase === 'idle' && isDragging) {
-    drawAimLine();
+  // Draw aim arrow when holding
+  if (ball.phase === 'idle' && isAiming) {
+    drawAimArrow();
   }
 
   // Draw "nice" popup
@@ -907,33 +887,69 @@ function drawBall() {
   ctx.restore();
 }
 
-function drawAimLine() {
-  // Dotted line showing trajectory hint
+function drawAimArrow() {
   const ctx = gctx;
-  const recent = flingPoints;
-  if (recent.length < 2) return;
-  const p1 = recent[0], p2 = recent[recent.length-1];
-  const dt = Math.max(p2.t - p1.t, 8);
-  let vx = (p2.x - p1.x) / dt * 16;
-  let vy = (p2.y - p1.y) / dt * 16;
-  if (vy > -2) vy = -14;
+  const { vx, vy, power } = getAimVector();
+  if (power < 0.03) return;
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([6, 8]);
-  ctx.beginPath();
+  // --- Trajectory arc dots ---
+  const dotCount = 18;
   let px = ball.x, py = ball.y, pvx = vx, pvy = vy;
-  ctx.moveTo(px, py);
-  for (let i = 0; i < 20; i++) {
-    pvy += GRAVITY * 0.5;
+  for (let i = 1; i <= dotCount; i++) {
+    pvy += GRAVITY;
     pvx *= AIR_DRAG;
     pvy *= AIR_DRAG;
     px += pvx; py += pvy;
-    ctx.lineTo(px, py);
     if (py > gc.height) break;
+    const t = i / dotCount;
+    const r = 3 + t * 2;
+    const alpha = (1 - t) * 0.7 * power;
+    ctx.beginPath();
+    ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255, 200, 80, ${alpha})`;
+    ctx.fill();
   }
+
+  // --- Arrow from ball pointing shot direction ---
+  const arrowLen = 30 + power * 55; // longer = more power
+  const nx = vx / Math.max(dist(0,0,vx,vy), 0.01);
+  const ny = vy / Math.max(dist(0,0,vx,vy), 0.01);
+  const ax = ball.x + nx * (ball.r + 6);
+  const ay = ball.y + ny * (ball.r + 6);
+  const bx2 = ax + nx * arrowLen;
+  const by2 = ay + ny * arrowLen;
+
+  // Shaft
+  ctx.save();
+  ctx.strokeStyle = `rgba(255, 200, 80, ${0.5 + power * 0.5})`;
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(ax, ay);
+  ctx.lineTo(bx2, by2);
   ctx.stroke();
-  ctx.setLineDash([]);
+
+  // Arrowhead
+  const headLen = 12;
+  const angle = Math.atan2(ny, nx);
+  ctx.fillStyle = `rgba(255, 200, 80, ${0.6 + power * 0.4})`;
+  ctx.beginPath();
+  ctx.moveTo(bx2, by2);
+  ctx.lineTo(bx2 - headLen * Math.cos(angle - 0.4), by2 - headLen * Math.sin(angle - 0.4));
+  ctx.lineTo(bx2 - headLen * Math.cos(angle + 0.4), by2 - headLen * Math.sin(angle + 0.4));
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // --- Power bar: small arc around ball ---
+  ctx.save();
+  ctx.strokeStyle = `rgba(255, 107, 0, 0.9)`;
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.r + 10, -Math.PI * 0.9, -Math.PI * 0.9 + power * Math.PI * 1.8);
+  ctx.stroke();
+  ctx.restore();
 }
 
 // ========================================================
