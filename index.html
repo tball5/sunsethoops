@@ -282,7 +282,7 @@
 
   <div id="best-toast">🏆 NEW BEST STREAK!</div>
 
-  <div id="hint">HOLD &amp; DRAG TO AIM — RELEASE TO SHOOT</div>
+  <div id="hint">SWIPE THE BALL TOWARD THE HOOP</div>
 
   <div id="music-player">
     <div id="player-controls">
@@ -419,52 +419,108 @@ function updateSide() {
 }
 
 // ========================================================
-// AIM & RELEASE INPUT
-// Hold anywhere to aim — drag to set direction & power — release to shoot
+// INPUT — dual mode
+// MOBILE (touch): hold & drag anywhere to aim, release to shoot
+// DESKTOP (mouse): swipe/fling forward toward the hoop
 // ========================================================
-let isAiming = false, aimStartX = 0, aimStartY = 0, aimCurX = 0, aimCurY = 0;
-let startX = 0, startY = 0; // ball start position ref
+const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+// Set hint based on device
+document.addEventListener('DOMContentLoaded', () => {
+  const hint = $('hint');
+  if (hint) hint.textContent = isTouchDevice
+    ? 'HOLD & DRAG TO AIM — RELEASE TO SHOOT'
+    : 'SWIPE THE BALL TOWARD THE HOOP';
+});
 
-const MAX_DRAG = 140;  // px drag = full power
+let isAiming = false, aimStartX = 0, aimStartY = 0, aimCurX = 0, aimCurY = 0;
+let startX = 0, startY = 0;
+
+// --- MOBILE constants (hold & aim) ---
+const MAX_DRAG = 140;
 const MAX_SPEED = 28;
 const MIN_SPEED = 10;
 
 function getAimVector() {
-  // Drag direction: from where finger started TO where finger is now
-  // Shot goes OPPOSITE (pull back like a slingshot feeling, but arrow points forward)
-  let dx = aimStartX - aimCurX;  // opposite of drag = shoot direction
+  let dx = aimStartX - aimCurX;
   let dy = aimStartY - aimCurY;
-
-  // Force upward — if aim isn't going up, push it up
   if (dy > -5) dy = -Math.abs(dx) * 0.5 - 10;
-
   const dragDist = Math.min(dist(0,0,dx,dy), MAX_DRAG);
-  const power = dragDist / MAX_DRAG; // 0..1
+  const power = dragDist / MAX_DRAG;
   const speed = MIN_SPEED + power * (MAX_SPEED - MIN_SPEED);
-
   const mag = Math.max(dist(0,0,dx,dy), 0.01);
   return { vx: (dx/mag) * speed, vy: (dy/mag) * speed, power };
 }
 
+// --- DESKTOP: swipe/fling ---
+let flingPoints = [];
+
+function launchFromSwipe() {
+  const now = Date.now();
+  const recent = flingPoints.filter(p => now - p.t < 150);
+  if (recent.length < 2) return false;
+  const p1 = recent[0], p2 = recent[recent.length - 1];
+  const dt = Math.max(p2.t - p1.t, 8);
+  let vx = (p2.x - p1.x) / dt * 16;
+  let vy = (p2.y - p1.y) / dt * 16;
+  if (vy > -2) vy = -14;
+  const speed = dist(0,0,vx,vy);
+  if (speed < 6) return false;
+  const maxSpd = 36;
+  if (speed > maxSpd) { vx = vx/speed*maxSpd; vy = vy/speed*maxSpd; }
+  ball.vx = vx; ball.vy = vy; ball.spin = 0;
+  ball.phase = 'flying'; ball.active = true;
+  state.attempts++; updateStatsUI();
+  return true;
+}
+
+// --- MOUSE events (desktop swipe) ---
 gc.addEventListener('mousedown', e => {
   if (ball.phase !== 'idle') return;
-  isAiming = true;
-  aimStartX = aimCurX = e.clientX;
-  aimStartY = aimCurY = e.clientY;
+  if (isTouchDevice) {
+    isAiming = true;
+    aimStartX = aimCurX = e.clientX;
+    aimStartY = aimCurY = e.clientY;
+  } else {
+    flingPoints = [{ x: e.clientX, y: e.clientY, t: Date.now() }];
+    isAiming = true; // reuse flag to mean "mouse is down"
+    aimStartX = aimCurX = e.clientX;
+    aimStartY = aimCurY = e.clientY;
+  }
   $("cursor").classList.add("flinging");
 });
+
 gc.addEventListener('mousemove', e => {
   $("cursor").style.left = e.clientX + "px";
   $("cursor").style.top  = e.clientY + "px";
-  if (isAiming) { aimCurX = e.clientX; aimCurY = e.clientY; }
+  if (!isAiming) return;
+  aimCurX = e.clientX; aimCurY = e.clientY;
+  if (!isTouchDevice) {
+    flingPoints.push({ x: e.clientX, y: e.clientY, t: Date.now() });
+    if (flingPoints.length > 12) flingPoints.shift();
+  }
 });
+
 gc.addEventListener('mouseup', e => {
   if (!isAiming) return;
   isAiming = false;
   $("cursor").classList.remove("flinging");
-  shootBall();
+  if (isTouchDevice) {
+    shootBall();
+  } else {
+    if (!launchFromSwipe()) {
+      // fallback: short click with no real swipe — use aim vector
+      const av = getAimVector();
+      if (av.power > 0.05) {
+        ball.vx = av.vx; ball.vy = av.vy; ball.spin = 0;
+        ball.phase = 'flying'; ball.active = true;
+        state.attempts++; updateStatsUI();
+      }
+    }
+    flingPoints = [];
+  }
 });
 
+// --- TOUCH events (mobile hold & aim) ---
 gc.addEventListener('touchstart', e => {
   e.preventDefault();
   if (ball.phase !== 'idle') return;
@@ -473,12 +529,14 @@ gc.addEventListener('touchstart', e => {
   aimStartX = aimCurX = t.clientX;
   aimStartY = aimCurY = t.clientY;
 }, { passive: false });
+
 gc.addEventListener('touchmove', e => {
   e.preventDefault();
   if (!isAiming) return;
   const t = e.touches[0];
   aimCurX = t.clientX; aimCurY = t.clientY;
 }, { passive: false });
+
 gc.addEventListener('touchend', e => {
   if (!isAiming) return;
   isAiming = false;
@@ -487,15 +545,10 @@ gc.addEventListener('touchend', e => {
 
 function shootBall() {
   const { vx, vy, power } = getAimVector();
-  // Need at least a small drag to shoot
   if (power < 0.05) return;
-  ball.vx = vx;
-  ball.vy = vy;
-  ball.spin = 0;
-  ball.phase = 'flying';
-  ball.active = true;
-  state.attempts++;
-  updateStatsUI();
+  ball.vx = vx; ball.vy = vy; ball.spin = 0;
+  ball.phase = 'flying'; ball.active = true;
+  state.attempts++; updateStatsUI();
 }
 
 // ========================================================
@@ -695,9 +748,13 @@ function drawFrame() {
   drawTrail();
   drawBall();
 
-  // Draw aim arrow when holding
+  // Draw aim visual when holding
   if (ball.phase === 'idle' && isAiming) {
-    drawAimArrow();
+    if (isTouchDevice) {
+      drawAimArrow();      // mobile: full arrow + trajectory + power ring
+    } else {
+      drawDesktopAimDots(); // desktop: subtle trajectory preview only
+    }
   }
 
   // Draw "nice" popup
@@ -949,6 +1006,36 @@ function drawAimArrow() {
   ctx.beginPath();
   ctx.arc(ball.x, ball.y, ball.r + 10, -Math.PI * 0.9, -Math.PI * 0.9 + power * Math.PI * 1.8);
   ctx.stroke();
+  ctx.restore();
+}
+
+function drawDesktopAimDots() {
+  // Desktop swipe preview — show dotted trajectory based on current mouse pos vs start
+  const ctx = gctx;
+  const dx = aimStartX - aimCurX;
+  const dy = aimStartY - aimCurY;
+  let vx = dx / 6, vy = dy / 6;
+  if (vy > -2) vy = -14;
+  const speed = dist(0,0,vx,vy);
+  if (speed < 2) return;
+  const cap = 36;
+  if (speed > cap) { vx = vx/speed*cap; vy = vy/speed*cap; }
+
+  const dotCount = 16;
+  let px = ball.x, py = ball.y, pvx = vx, pvy = vy;
+  ctx.save();
+  for (let i = 1; i <= dotCount; i++) {
+    pvy += GRAVITY;
+    pvx *= AIR_DRAG;
+    pvy *= AIR_DRAG;
+    px += pvx; py += pvy;
+    if (py > gc.height) break;
+    const t = i / dotCount;
+    ctx.beginPath();
+    ctx.arc(px, py, 3, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${(1 - t) * 0.4})`;
+    ctx.fill();
+  }
   ctx.restore();
 }
 
