@@ -13,18 +13,24 @@
     width: 100vw; height: 100vh; overflow: hidden;
     font-family: 'Barlow Condensed', sans-serif;
     cursor: none;
+    background: #000; /* black fallback while GIFs load, no white flash */
   }
 
   /* ===================== BACKGROUNDS ===================== */
   #gif-backgrounds {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
     z-index: 0;
+    background: #000;
   }
   .gif-bg {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
     object-fit: cover; opacity: 0;
-    transition: opacity 0.8s ease;
+    transition: opacity 0.6s ease;
     pointer-events: none;
+    will-change: opacity;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    transform: translateZ(0); /* force GPU layer, eliminates mobile repaint flicker */
   }
   .gif-bg.active { opacity: 1; }
 
@@ -32,6 +38,9 @@
   #game-canvas {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
     z-index: 10;
+    transform: translateZ(0); /* GPU layer, smooth compositing over GIFs */
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
   }
 
   /* ===================== UI OVERLAY ===================== */
@@ -461,37 +470,38 @@ gc.addEventListener('touchend', e => {
 
 function launchFromFling(ex, ey) {
   if (flingPoints.length < 2) return;
-  
-  // Calculate velocity from recent fling history
+
+  // Use recent fling points for velocity
   const now = Date.now();
-  const recent = flingPoints.filter(p => now - p.t < 120);
+  const recent = flingPoints.filter(p => now - p.t < 150);
   if (recent.length < 2) return;
 
   const p1 = recent[0], p2 = recent[recent.length - 1];
-  const dt = Math.max(p2.t - p1.t, 10);
+  const dt = Math.max(p2.t - p1.t, 8);
   let vx = (p2.x - p1.x) / dt * 16;
   let vy = (p2.y - p1.y) / dt * 16;
 
-  // We want an upward fling toward hoop — encourage upward shots
-  // If vy is not going up (negative), scale it
-  if (vy > 0) vy = -Math.abs(vy) * 0.6; // flip if accidentally downward
+  // If the fling wasn't clearly upward, make it go up
+  // but PRESERVE the horizontal direction exactly as swiped
+  if (vy > -2) vy = -14; // force upward if barely moving up
 
-  const speed = dist(0,0,vx,vy);
-  const maxSpeed = 38;
-  const minSpeed = 10;
+  // Clamp speed — no fallback redirect to hoop center (that caused side curving)
+  const speed = dist(0, 0, vx, vy);
+  const maxSpeed = 36;
+  const minSpeed = 8;
   if (speed < minSpeed) {
-    // Aim toward hoop as fallback
-    const dx = hoop.x - ball.x, dy = hoop.y - ball.y;
-    const d = dist(0,0,dx,dy);
-    vx = dx/d * 18; vy = dy/d * 18 - 12;
+    // Scale up while keeping the exact same angle
+    const scale = minSpeed / Math.max(speed, 0.1);
+    vx *= scale; vy *= scale;
   }
   if (speed > maxSpeed) {
-    vx = vx/speed*maxSpeed; vy = vy/speed*maxSpeed;
+    vx = vx / speed * maxSpeed;
+    vy = vy / speed * maxSpeed;
   }
 
   ball.vx = vx;
   ball.vy = vy;
-  ball.spin = vx * 0.08;
+  ball.spin = 0; // no spin-induced curve
   ball.phase = 'flying';
   ball.active = true;
   state.attempts++;
@@ -890,10 +900,10 @@ function drawAimLine() {
   const recent = flingPoints;
   if (recent.length < 2) return;
   const p1 = recent[0], p2 = recent[recent.length-1];
-  const dt = Math.max(p2.t - p1.t, 10);
+  const dt = Math.max(p2.t - p1.t, 8);
   let vx = (p2.x - p1.x) / dt * 16;
   let vy = (p2.y - p1.y) / dt * 16;
-  if (vy > 0) vy = -Math.abs(vy) * 0.6;
+  if (vy > -2) vy = -14;
 
   ctx.strokeStyle = 'rgba(255,255,255,0.25)';
   ctx.lineWidth = 2;
