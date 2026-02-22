@@ -130,20 +130,25 @@
   }
   #player-controls button:hover { opacity: 1; transform: scale(1.15); }
 
-  /* Song tiles — spread full width */
+  /* Song tiles — spread full width on desktop, scroll on mobile */
   #song-list {
     display: flex; flex: 1; align-items: stretch;
     gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Firefox */
   }
+  #song-list::-webkit-scrollbar { display: none; } /* Chrome/Safari */
   .song-tile {
     flex: 1; display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    padding: 4px 8px; border-radius: 8px;
+    padding: 4px 10px; border-radius: 8px;
     cursor: pointer; pointer-events: all;
     border: 1px solid rgba(255,255,255,0.1);
     background: rgba(255,255,255,0.05);
     transition: background 0.2s, border-color 0.2s;
-    min-width: 0;
+    min-width: 90px; /* ensures full title always visible, enables scroll on small screens */
+    white-space: nowrap;
   }
   .song-tile:hover { background: rgba(255,255,255,0.12); }
   .song-tile.active {
@@ -153,8 +158,13 @@
   .song-tile-name {
     font-family: 'Bebas Neue', sans-serif;
     font-size: 13px; color: #fff; letter-spacing: 1px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    width: 100%; text-align: center;
+    white-space: nowrap;
+    text-align: center;
+  }
+  /* On mobile, auto-scroll active tile into view */
+  @media (max-width: 600px) {
+    .song-tile { min-width: 100px; padding: 4px 12px; }
+    .song-tile-name { font-size: 12px; }
   }
   /* Soundbar visualizer */
   #soundbar {
@@ -517,7 +527,8 @@ function physicsTick() {
   function rimBounce(rx, ry) {
     const dx = ball.x - rx, dy = ball.y - ry;
     const d = dist(0,0,dx,dy);
-    if (d < ball.r + hoop.rimThick && rimBounceCount < 4) {
+    // Only collide when ball is moving DOWNWARD (vy > 0) — lets it arc up and over freely
+    if (d < ball.r + hoop.rimThick && rimBounceCount < 4 && ball.vy > 0) {
       rimBounceCount++;
       // Normal from rim center to ball
       const nx = dx/d, ny = dy/d;
@@ -961,6 +972,10 @@ function playTrack(idx) {
   // Update song tile UI
   document.querySelectorAll('.song-tile').forEach((tile, i) => {
     tile.classList.toggle('active', i === idx);
+    if (i === idx) {
+      // Smooth scroll active tile into view on mobile
+      setTimeout(() => tile.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }), 50);
+    }
   });
   setSoundbarsPlaying(true);
   isPlaying = true;
