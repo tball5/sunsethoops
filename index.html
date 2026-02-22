@@ -156,13 +156,6 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     width: 100%; text-align: center;
   }
-  .song-tile-vibe {
-    font-size: 9px; color: rgba(255,255,255,0.45);
-    letter-spacing: 1.5px; text-transform: uppercase;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    width: 100%; text-align: center;
-  }
-
   /* Soundbar visualizer */
   #soundbar {
     display: flex; align-items: flex-end; gap: 2px;
@@ -227,11 +220,11 @@
 
 <!-- GIF Backgrounds -->
 <div id="gif-backgrounds">
-  <img class="gif-bg active" src="Pixaloop_02_08_2023_21_32_02_1240000.gif" alt="">
-  <img class="gif-bg" src="Pixaloop_04_08_2023_09_36_05_3730000.gif" alt="">
-  <img class="gif-bg" src="Pixaloop_05_08_2023_17_32_34_4840000.gif" alt="">
-  <img class="gif-bg" src="Pixaloop_06_08_2023_15_15_20_8450000.gif" alt="">
-  <img class="gif-bg" src="Pixaloop_08_08_2023_10_33_32_4480000.gif" alt="">
+  <img class="gif-bg active" src="titaniyumgif.gif" alt="">
+  <img class="gif-bg" src="howimlivingif.gif" alt="">
+  <img class="gif-bg" src="runninaroundgif.gif" alt="">
+  <img class="gif-bg" src="sunsethoopsgif.gif" alt="">
+  <img class="gif-bg" src="realonegif.gif" alt="">
 </div>
 <!-- Game -->
 <canvas id="game-canvas"></canvas>
@@ -930,11 +923,11 @@ function drawBackground() { /* GIF backgrounds — no canvas drawing needed */ }
 // MUSIC — Real MP3 Audio
 // ========================================================
 const TRACKS = [
-  { name: 'TITANIYUM',      vibe: 'HARD HITTER',    scene: 0, file: 'TITANIYUM.mp3' },
-  { name: 'HOW IM LIVIN',   vibe: 'STREET ANTHEM',  scene: 1, file: 'HOW_IM_LIVIN.mp3' },
-  { name: 'RUNNIN AROUND',  vibe: 'RUNNIN AROUND',  scene: 2, file: 'RUNNIN_AROUND.mp3' },
-  { name: 'SUNSET HOOPS',   vibe: 'SMOOTH VIBE',    scene: 3, file: 'SUNSET_HOOPS.mp3' },
-  { name: 'REAL ONE',       vibe: 'CERTIFIED',      scene: 4, file: 'REAL_ONE.mp3' },
+  { name: 'TITANIYUM',     scene: 0, file: 'TITANIYUM.mp3' },
+  { name: 'HOW IM LIVIN',  scene: 1, file: 'HOW_IM_LIVIN.mp3' },
+  { name: 'RUNNIN AROUND', scene: 2, file: 'RUNNIN_AROUND.mp3' },
+  { name: 'SUNSET HOOPS',  scene: 3, file: 'SUNSET_HOOPS.mp3' },
+  { name: 'REAL ONE',      scene: 4, file: 'REAL_ONE.mp3' },
 ];
 
 let currentTrack = 0, isPlaying = false;
@@ -1007,7 +1000,7 @@ const songList = $('song-list');
 TRACKS.forEach((t, i) => {
   const tile = document.createElement('div');
   tile.className = 'song-tile' + (i === 0 ? ' active' : '');
-  tile.innerHTML = `<div class="song-tile-name">${t.name}</div><div class="song-tile-vibe">${t.vibe}</div>`;
+  tile.innerHTML = `<div class="song-tile-name">${t.name}</div>`;
   tile.addEventListener('click', () => playTrack(i));
   songList.appendChild(tile);
 });
