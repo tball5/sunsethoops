@@ -7,7 +7,8 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@300;400;700&display=swap');
 
-  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+  html { touch-action: none; overflow: hidden; }
 
   body {
     width: 100vw; height: 100vh; overflow: hidden;
@@ -38,9 +39,11 @@
   #game-canvas {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
     z-index: 10;
-    transform: translateZ(0); /* GPU layer, smooth compositing over GIFs */
+    transform: translateZ(0);
     -webkit-backface-visibility: hidden;
     backface-visibility: hidden;
+    touch-action: none; /* prevents iOS scroll interference causing repaints */
+    -webkit-tap-highlight-color: transparent;
   }
 
   /* ===================== UI OVERLAY ===================== */
@@ -311,14 +314,21 @@ const dist = (x1, y1, x2, y2) => Math.sqrt((x2-x1)**2 + (y2-y1)**2);
 // ========================================================
 // CANVAS SETUP
 // ========================================================
-const gc = $('game-canvas'), gctx = gc.getContext('2d');
+const gc = $('game-canvas'), gctx = gc.getContext('2d', { alpha: true, desynchronized: false });
 
 function resize() {
-  gc.width = window.innerWidth;
-  gc.height = window.innerHeight;
+  const w = window.innerWidth, h = window.innerHeight;
+  if (gc.width !== w || gc.height !== h) {
+    gc.width = w;
+    gc.height = h;
+  }
 }
 resize();
-window.addEventListener('resize', () => { resize(); initHoop(); });
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { resize(); initHoop(); }, 200);
+});
 
 // ========================================================
 // GAME STATE
@@ -678,6 +688,9 @@ function showBestToast() {
 let ballAngle = 0;
 
 function drawFrame() {
+  // Use clearRect with explicit composite reset — prevents black artifact buildup on mobile
+  gctx.globalCompositeOperation = 'source-over';
+  gctx.globalAlpha = 1;
   gctx.clearRect(0, 0, gc.width, gc.height);
 
   // Court floor line
@@ -927,8 +940,6 @@ function drawAimLine() {
 // BACKGROUND GIF SWITCHER
 // ========================================================
 let currentScene = 0;
-let bgTime = 0; // kept for any remaining refs
-
 function switchBackground(idx) {
   document.querySelectorAll('.gif-bg').forEach((el, i) => {
     el.classList.toggle('active', i === idx);
@@ -936,8 +947,6 @@ function switchBackground(idx) {
   currentScene = idx;
 }
 
-// Background handled by GIF images
-function drawBackground() { /* GIF backgrounds — no canvas drawing needed */ }
 
 
 // ========================================================
@@ -1042,11 +1051,7 @@ resetBall();
 updateStatsUI();
 
 function loop(ts) {
-  const dt = ts - lastTime;
   lastTime = ts;
-  bgTime += 0.02;
-
-  drawBackground();
   physicsTick();
   drawFrame();
 
